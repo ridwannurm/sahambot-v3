@@ -1,0 +1,39 @@
+# ── Dependencies ─────────────────────────────────
+node_modules/
+
+# ── API Keys & Secrets (JANGAN PERNAH DI-COMMIT) ─
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ── Database & Data User ─────────────────────────
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ─────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+
+# ── OS Files ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Temp ─────────────────────────────────────────
+tmp/
+temp/
+.cache/
+
+# ── Jaga struktur folder tapi abaikan isinya ─────
+!data/.gitkeep
+!logs/.gitkeep

@@ -1,0 +1,43 @@
+{
+  "name": "sahambot-v2",
+  "version": "3.2.3",
+  "description": "Master Trading System \u2014 Multi-AI IDX Analyzer + Konglo Intelligence + Trade Tracker",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "telegram": "node index.js telegram",
+    "scan": "node index.js scan",
+    "setup": "node index.js setup"
+  },
+  "keywords": [
+    "saham",
+    "idx",
+    "indonesia",
+    "telegram",
+    "ai",
+    "stockbot"
+  ],
+  "author": "SahamBot",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "axios": "^1.14.0",
+    "chalk": "^5.6.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.0",
+    "figlet": "^1.11.0",
+    "gradient-string": "^3.0.0",
+    "grammy": "^1.42.0",
+    "node-cron": "^4.2.1",
+    "openai": "^6.33.0",
+    "sql.js": "^1.14.1",
+    "technicalindicators": "^3.1.0",
+    "xlsx": "^0.18.5",
+    "yahoo-finance2": "^3.14.0"
+  },
+  "bin": {
+    "sahambot": "./index.js"
+  }
+}
