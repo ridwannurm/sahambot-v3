@@ -67,22 +67,37 @@ const TTL = 5 * 60 * 1000;
 export async function getKongloData() {
   const now = Date.now();
 
-  // Jika cache ada dan belum expired, cek dulu datanya tidak kosong
+  // Gunakan cache hanya jika data tidak kosong
   if (_cache && (now - _cacheTime) < TTL && Object.keys(_cache.data || {}).length > 0) {
     return _cache;
   }
 
-  // Reset cache agar getAllKonglos() baca ulang dari disk
+  // Selalu reset cache agar baca ulang dari disk
   _cache = null;
   clearCache();
 
+  // Sync Excel ke JSON jika ada perubahan
   await syncExcelToJSON();
 
-  const data    = getAllKonglos();
-  const reverse = getReverseIndex();
-  const stats   = getStats();
+  // Baca langsung dari JSON file (tidak lewat cache kongloData)
+  let data = {}, reverse = {};
+  try {
+    if (fs.existsSync(JSON_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf-8'));
+      data    = raw.konglos      || {};
+      reverse = raw.reverseIndex || {};
+    }
+  } catch(e) {
+    console.log('[KongloData] Error baca JSON:', e.message);
+  }
 
   console.log(`[KongloData] Loaded: ${Object.keys(data).length} konglo, ${Object.keys(reverse).length} saham`);
+
+  const stats = {
+    totalKonglo:    Object.keys(data).length,
+    totalSaham:     Object.keys(reverse).length,
+    crossOwnership: Object.values(reverse).filter(v => v.length > 1).length
+  };
 
   const excelExists = fs.existsSync(EXCEL_PATH);
   const source = excelExists ? 'excel' : (fs.existsSync(JSON_PATH) ? 'json' : 'default');
