@@ -112,11 +112,24 @@ function detectSmartMoney(results) {
 export async function analyzeKonglo(query, options = {}) {
   const { data, reverseIndex, source, stats } = await getKongloData();
 
-  // Cari konglo
-  const konglo = getSahamByKonglo(query);
+  // Cari konglo langsung dari data yang sudah di-load
+  const q = query.toUpperCase().trim();
+  let konglo = null;
+  if (data[q]) {
+    konglo = { key: q, ...data[q] };
+  } else {
+    for (const [k, v] of Object.entries(data)) {
+      if (v.nama.toLowerCase().includes(query.toLowerCase()) || k.toLowerCase().includes(query.toLowerCase())) {
+        konglo = { key: k, ...v };
+        break;
+      }
+    }
+  }
   if (!konglo) {
-    const list = listAllKonglo().map(k => `• /konglo ${k.key} — ${k.nama} (${k.jumlahSaham} saham)`).join('\n');
-    return { error: `Konglo "${query}" tidak ditemukan.\n\nTersedia ${stats.totalKonglo} konglomerat:\n${list}` };
+    const list = Object.entries(data)
+      .map(([key, v]) => `• /konglo ${key} — ${v.nama} (${v.saham?.length || 0} saham)`)
+      .join('\n');
+    return { error: `Konglo "${query}" tidak ditemukan.\n\nTersedia ${Object.keys(data).length} konglomerat:\n${list}` };
   }
 
   const symbols = konglo.saham.map(s => s.kode);
