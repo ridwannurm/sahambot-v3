@@ -411,7 +411,7 @@ export function formatTopVolumeTelegram(movers) {
     text += `${q.rank}. *${q.symbol}*${kongloTag}${kongloName}\n`;
     text += `   ${chgIcon} Rp ${fmt(q.price)} (${parseFloat(chg) >= 0 ? '+' : ''}${chg}%)\n`;
     text += `   📊 Vol: *${q.volMillion}M* ${q.volSignal}\n`;
-    if (q.volRatio > 1) text += `   Rasio: ${q.safeFixed(volRatio, 1)}x rata-rata\n`;
+    if (q.volRatio > 1) text += `   Rasio: ${safeFixed(q.volRatio, 1)}x rata-rata\n`;
     text += `   ARB: Rp ${fmt(q.arb)} | ARA: Rp ${fmt(q.ara)}\n\n`;
   }
 

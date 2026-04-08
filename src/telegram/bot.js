@@ -427,7 +427,7 @@ export function startTelegramBot() {
       for (const q of spikes) {
         const chg = (q.changePct||0).toFixed(2);
         text += `${q.volSignal} *${q.symbol}*${q.isKonglo?' 🏦':''}\n`;
-        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.safeFixed(volRatio, 1)}x)\n\n`;
+        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${safeFixed(q.volRatio, 1)}x)\n\n`;
       }
       ctx.reply(trunc(text), {parse_mode:'Markdown'});
     } catch(e) { ctx.reply(`❌ ${e.message}`); }
@@ -634,7 +634,7 @@ async function handleIntent(ctx, uid, text, intent) {
       for (const q of spikes) {
         const chg = (q.changePct||0).toFixed(2);
         text += `${q.volSignal} *${q.symbol}*${q.isKonglo?' 🏦':''}\n`;
-        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.safeFixed(volRatio, 1)}x)\n\n`;
+        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${safeFixed(q.volRatio, 1)}x)\n\n`;
       }
       return ctx.reply(trunc(text), {parse_mode:'Markdown'});
     } catch(e) { return ctx.reply(`❌ ${e.message}`); }
