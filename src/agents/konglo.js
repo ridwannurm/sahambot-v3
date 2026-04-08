@@ -108,10 +108,13 @@ function detectSmartMoney(results) {
 }
 
 // ── Main: Analisis Satu Konglo ────────────────────────────────
-export async function analyzeKonglo(query) {
-  const { data, reverseIndex, source, stats } = await getKongloData();
+export async function analyzeKonglo(query, options = {}) {
+  const { provider = 'claude', model = null } = options;
 
-  // Cari konglo
+  // 1. Ambil Data Dasar
+  const { reverseIndex, source, stats } = await getKongloData();
+
+  // 2. Cari Grup Konglomerat
   const konglo = getSahamByKonglo(query);
   if (!konglo) {
     const list = listAllKonglo().map(k => `• /konglo ${k.key} — ${k.nama} (${k.jumlahSaham} saham)`).join('\n');
@@ -119,69 +122,81 @@ export async function analyzeKonglo(query) {
   }
 
   const symbols = konglo.saham.map(s => s.kode);
-
-  // Fetch semua data pasar dari Yahoo Finance
   const quotes = await fetchMultipleQuotes(symbols);
 
-  // Analisis per saham
+  // 3. Proses Data Teknikal & Market (Lakukan INI DULU)
   const sahamResults = await Promise.all(
     konglo.saham.map(async (saham, i) => {
       const quote = quotes[i] || {};
-      let indicators = null, orderbook = null;
+      let indicators = null, entry = null, score = 0, signal = 'NETRAL', orderbook = null;
 
-      let entry = null, score = 0, signal = 'NETRAL', orderbookInsight = null;
       try {
         const ohlc = await fetchOHLC(saham.kode, '3mo');
         indicators = calcAllIndicators(ohlc);
-        orderbook  = analyzeOrderbookProxy(quote, ohlc);
+        orderbook = analyzeOrderbookProxy(quote, ohlc); // Pakai proxy agar akurat
         
         if (indicators && quote.price > 0) {
           entry = calcEntryPlan(quote, indicators, 'moderate');
           const sc = scoreScalping(quote, indicators);
-          score  = sc.score;
+          score = sc.score;
           signal = sc.signal;
         }
-      } catch {}
+      } catch (e) { /* ignore error per stock */ }
 
       const prev = quote.prev || quote.price || 0;
-      const arb  = calcARB(prev);
-      const ara  = calcARA(prev);
-
       return {
         kode: saham.kode, nama: saham.nama,
-        sektor: saham.sektor, pct: saham.pct,
-        quote, indicators, orderbook, orderbookInsight, entry, score, signal,
-        arb, ara, prev,
-        distToArb: (arb && quote.price) ? ((quote.price - arb) / quote.price * 100).toFixed(2) : null,
-        distToAra: (ara && quote.price) ? ((ara - quote.price) / quote.price * 100).toFixed(2) : null,
-        isKonglo: true,
+        sektor: saham.sektor, quote, indicators, orderbook, entry, score, signal,
+        arb: calcARB(prev), ara: calcARA(prev),
         multiKonglo: (reverseIndex[saham.kode] || []).length > 1
       };
     })
   );
 
-  // Cross ownership
-  const crossOwned = sahamResults
-    .filter(r => r.multiKonglo)
-    .map(r => ({
-      kode: r.kode,
-      owners: (reverseIndex[r.kode] || []).map(o => o.kongloKey)
-    }));
-
-  // Smart money
+  // 4. Analisis Smart Money & Cross Ownership
   const smartMoney = detectSmartMoney(sahamResults);
+  const crossOwned = sahamResults.filter(r => r.multiKonglo).map(r => ({
+    kode: r.kode, owners: (reverseIndex[r.kode] || []).map(o => o.kongloKey)
+  }));
 
+  // 5. Analisis AI (Lakukan SETELAH data teknikal siap)
+  let aiAnalysis = "Analisis AI tidak tersedia.";
+  try {
+    const summaryForAI = sahamResults.map(r => 
+      `${r.kode}: Rp ${r.quote?.price} (${(r.quote?.changePct || 0).toFixed(2)}%), Signal: ${r.signal}, Score: ${r.score}`
+    ).join('\n');
+
+    const prompt = `Analisis saham grup ${konglo.nama}:\n${summaryForAI}\n\nBerikan kesimpulan ringkas grup mana yang paling menarik dan jelaskan rotasi sektornya.`;
+
+    const llmResult = await callLLM({
+      provider,
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 500
+    });
+    aiAnalysis = llmResult.text;
+  } catch (e) {
+    console.error("Gagal AI Konglo:", e.message);
+  }
+
+  // 6. Return Data Lengkap
   return {
-    kongloKey: konglo.key, konglo,
-    sahamResults, smartMoney, crossOwned,
-    dataSource: source, stats
+    konglo,
+    sahamResults,
+    smartMoney,
+    crossOwned,
+    analysis: aiAnalysis,
+    provider,
+    model,
+    dataSource: source,
+    stats
   };
 }
 
 // ── Format Output Telegram (plain text, no markdown) ──────────
 export function formatKongloTelegram(result) {
   if (result.error) return result.error;
-  const { konglo, sahamResults, smartMoney, crossOwned, dataSource } = result;
+  const { konglo, sahamResults, smartMoney, crossOwned, analysis, dataSource } = result;
 
   let text = '';
 
@@ -275,8 +290,21 @@ export function formatKongloTelegram(result) {
     text += `\nSkor: ${score}/100 | Signal: ${signal}\n\n`;
   }
 
-  text += `Sumber: Excel + Yahoo Finance | ARB -15% | v3`;
-  // Jangan truncate di sini — biarkan bot.js yang handle split
+  if (analysis) {
+    text += `📝 *ANALISIS STRATEGIS AI*\n`;
+    text += `${analysis}\n\n`;
+  }
+
+// 2. Deklarasikan Waktu Update
+  const timeNow = new Date().toLocaleTimeString('id-ID', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+
+  // 3. Tampilkan Footer Akhir
+  text += `----------------------------\n`;
+  text += `🕒 Update: ${timeNow} WIB | Sumber: ${dataSource.toUpperCase()} | v3`;
+
   return text;
 }
 

@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getAllKonglos, getReverseIndex, getStats } from './kongloData.js';
+import { getAllKonglos, getReverseIndex, getStats, clearCache } from './kongloData.js';
 
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const ROOT       = path.join(__dirname, '../..');
@@ -28,6 +28,8 @@ export async function syncExcelToJSON() {
     const konglos = {}, reverse = {};
 
     for (const row of rows) {
+
+      console.log(`🔍 Memproses Baris: ${row['KODE SAHAM'] || 'KOSONG'} - ${row['KONGLOMERAT'] || 'KOSONG'}`);
       const kode_saham  = (row['KODE SAHAM'] || row['kode saham'] || row['KODE'] || '').toString().trim().toUpperCase();
       const kode_konglo = (row['KODE KONGLOMERAT'] || row['kode konglomerat'] || row['KONGLO'] || '').toString().trim().toUpperCase();
       const nama_konglo = (row['KONGLOMERAT'] || row['konglomerat'] || row['NAMA KONGLO'] || '').toString().trim();
@@ -51,6 +53,7 @@ export async function syncExcelToJSON() {
 
     fs.mkdirSync(path.dirname(JSON_PATH), { recursive: true });
     fs.writeFileSync(JSON_PATH, JSON.stringify({ konglos, reverseIndex: reverse }, null, 2));
+    clearCache(); // ← reset supaya kongloData.js re-load dari JSON baru
     console.log(`  ✅ Excel → JSON sync: ${Object.keys(konglos).length} konglo, ${Object.keys(reverse).length} saham`);
     return true;
   } catch (e) {
@@ -64,10 +67,19 @@ let _cache = null, _cacheTime = 0;
 const TTL = 5 * 60 * 1000;
 
 export async function getKongloData() {
-  const now = Date.now();
-  if (_cache && (now - _cacheTime) < TTL) return _cache;
+  // 1. Selalu cek perubahan file fisik terlebih dahulu
+  const isUpdated = await syncExcelToJSON();
 
-  await syncExcelToJSON();
+  const now = Date.now();
+  
+  // 2. MODIFIKASI: Hanya gunakan cache jika file TIDAK update DAN belum expired
+  if (!isUpdated && _cache && (now - _cacheTime) < TTL) {
+    return _cache;
+  }
+
+  // 3. Jika file update (isUpdated = true) ATAU cache expired:
+  // Pastikan cache di kongloData.js juga dibersihkan
+  clearCache(); 
 
   const data    = getAllKonglos();
   const reverse = getReverseIndex();
@@ -76,11 +88,14 @@ export async function getKongloData() {
   const excelExists = fs.existsSync(EXCEL_PATH);
   const source = excelExists ? 'excel' : (fs.existsSync(JSON_PATH) ? 'json' : 'default');
 
+  // Update cache lokal excelLoader
   _cache = { data, reverseIndex: reverse, source, stats };
   _cacheTime = now;
+  
   return _cache;
 }
 
 export function clearKongloCache() {
   _cache = null; _cacheTime = 0;
 }
+

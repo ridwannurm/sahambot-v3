@@ -10,6 +10,9 @@ Selalu jawab dalam Bahasa Indonesia yang jelas dan ringkas.
 Format output selalu: Analisis → Sinyal → Entry/SL/TP → Alasan → Risk Warning.
 Jangan terlalu panjang — maksimal 300 kata. Gunakan emoji untuk poin penting.`;
 
+// Helper internal (Safety First)
+const fmt = n => (n !== null && n !== undefined) ? Math.round(n).toLocaleString('id-ID') : 'N/A';
+const p = n => (n !== null && n !== undefined) ? n.toFixed(2) + '%' : 'N/A';
 // ── Full Stock Analysis ──────────────────────────────────────
 export async function analyzeStock(symbol, options = {}) {
   const {
@@ -66,7 +69,24 @@ Berikan analisis ${mode} untuk ${symbol}. Sertakan: sinyal (BELI/JUAL/HOLD), ent
   addContext(userId, 'assistant', llmResult.text);
   saveAnalysis({ symbol, userId, llm: `${provider}/${llmResult.model}`, analysis: llmResult.text, signal, entryPrice: entry.price, stopLoss: entry.stopLoss, takeProfit: entry.takeProfit1, score });
 
-  return { quote, indicators, entry, score, signal, trend, reasons, orderbookInsight, analysis: llmResult.text, provider: llmResult.provider, model: llmResult.model };
+  const obSummary = orderbookInsight 
+    ? `${orderbookInsight.verdict} (${orderbookInsight.strength}) | Buy: ${orderbookInsight.buyPct}%`
+    : null;
+
+  return { 
+    quote, 
+    indicators, 
+    entry, 
+    score, 
+    signal, 
+    trend, 
+    reasons, 
+    // Kita kirim string ringkas agar bot.js mudah menampilkannya
+    orderbookInsight: obSummary, 
+    analysis: llmResult.text, 
+    provider: llmResult.provider, 
+    model: llmResult.model 
+  };
 }
 
 // ── Free Chat dengan context ─────────────────────────────────
@@ -97,6 +117,7 @@ Memori user ini:
 }
 
 // ── Auto Scan All Watchlist ──────────────────────────────────
+// ── Auto Scan All Watchlist ──────────────────────────────────
 export async function scanWatchlist(watchlist, options = {}) {
   const { provider = 'claude', model = null, riskProfile = 'moderate' } = options;
   const results = [];
@@ -106,11 +127,29 @@ export async function scanWatchlist(watchlist, options = {}) {
       const [quote, ohlc] = await Promise.all([fetchQuote(symbol), fetchOHLC(symbol, '3mo')]);
       const indicators = calcAllIndicators(ohlc);
       if (!indicators) continue;
+
       const entry = calcEntryPlan(quote, indicators, riskProfile);
       const { score, signal, trend, reasons } = scoreScalping(quote, indicators);
-      results.push({ symbol, quote, indicators, entry, score, signal, trend, reasons });
+
+      // --- LOGIKA ORDERBOOK UNTUK SCANNER ---
+      const orderbookInsight = analyzeOrderbookProxy(quote, ohlc);
+      const obSummary = orderbookInsight 
+        ? `${orderbookInsight.verdict} (${orderbookInsight.strength})` 
+        : null;
+
+      results.push({ 
+        symbol, 
+        quote, 
+        indicators, 
+        entry, 
+        score, 
+        signal, 
+        trend, 
+        reasons,
+        orderbookInsight: obSummary // Sekarang data ini tersedia untuk bot.js
+      });
     } catch (e) {
-      // skip
+      // skip jika error agar proses scan saham lain tidak terhenti
     }
   }
 
@@ -132,37 +171,37 @@ export function calcPositionSize(capital, riskPctPerTrade, entry, stopLoss) {
     shares: sharesRounded,
     totalCost: sharesRounded * entry,
     riskAmount: sharesRounded * riskPerShare,
-    riskPct: ((sharesRounded * riskPerShare) / capital * 100).toFixed(2)
+    riskPct: p(((sharesRounded * riskPerShare) / capital) * 100)
   };
 }
 
 // ── Build context string ─────────────────────────────────────
 function buildDataContext(symbol, quote, ind, entry, score, signal, trend) {
-  const fmt = n => n ? Math.round(n).toLocaleString('id-ID') : 'N/A';
   return `
 DATA SAHAM ${symbol} (Yahoo Finance):
-Harga:   Rp ${fmt(quote.price)} | Change: ${quote.changePct?.toFixed(2)}%
-Open:    Rp ${fmt(quote.open)} | High: Rp ${fmt(quote.high)} | Low: Rp ${fmt(quote.low)}
-Volume:  ${quote.volume ? (quote.volume/1e6).toFixed(2)+'M lot' : 'N/A'}
-Nilai:   Rp ${quote.volume && quote.price ? ((quote.volume*quote.price)/1e9).toFixed(2)+'B' : 'N/A'}
-Vol Avg: ${quote.avgVolume ? (quote.avgVolume/1e6).toFixed(2)+'M lot' : 'N/A'}
-Vol Rasio: ${quote.avgVolume && quote.volume ? (quote.volume/quote.avgVolume).toFixed(2)+'x rata-rata' : 'N/A'}
-Market Cap: ${quote.marketCap ? (quote.marketCap/1e12).toFixed(2)+'T' : 'N/A'} | PER: ${quote.pe?.toFixed(1)||'N/A'}x
+Harga:    Rp ${fmt(quote?.price)} | Change: ${p(quote?.changePct)}
+Open:     Rp ${fmt(quote?.open)} | High: Rp ${fmt(quote?.high)} | Low: Rp ${fmt(quote?.low)}
+Volume:   ${quote?.volume ? (quote.volume/1e6).toFixed(2)+'M lot' : 'N/A'}
+Nilai:    Rp ${quote?.volume && quote?.price ? ((quote.volume * quote.price)/1e9).toFixed(2)+'B' : 'N/A'}
+Vol Avg:  ${quote?.avgVolume ? (quote.avgVolume/1e6).toFixed(2)+'M lot' : 'N/A'}
+Vol Rasio: ${quote?.avgVolume && quote?.volume ? (quote.volume / quote.avgVolume).toFixed(2)+'x rata-rata' : 'N/A'}
+Market Cap: ${quote?.marketCap ? (quote.marketCap/1e12).toFixed(2)+'T' : 'N/A'} | PER: ${quote?.pe?.toFixed(1) || 'N/A'}x
 
 INDIKATOR TEKNIKAL:
-RSI(14): ${ind.rsi?.toFixed(1)||'N/A'} | Trend: ${trend}
-MACD: ${ind.macd?.MACD?.toFixed(0)||'N/A'} | Signal: ${ind.macd?.signal?.toFixed(0)||'N/A'} | Hist: ${ind.macd?.histogram?.toFixed(0)||'N/A'}
-EMA9: ${fmt(ind.ema9)} | EMA20: ${fmt(ind.ema20)} | EMA50: ${fmt(ind.ema50)}
-BB Upper: ${fmt(ind.bb?.upper)} | BB Lower: ${fmt(ind.bb?.lower)}
-ATR: ${fmt(ind.atr)} | VWAP: ${fmt(ind.vwap)}
-Support: ${fmt(ind.support)} | Resistance: ${fmt(ind.resistance)}
-Volume Spike: ${ind.volSpike ? 'YA ('+ind.volRatio?.toFixed(1)+'x)' : 'Tidak'}
-Momentum 10h: ${ind.momentum10?.toFixed(2)||'N/A'}%
+RSI(14): ${ind?.rsi?.toFixed(1) || 'N/A'} | Trend: ${trend}
+MACD: ${ind?.macd?.MACD?.toFixed(0) || 'N/A'} | Signal: ${ind?.macd?.signal?.toFixed(0) || 'N/A'} | Hist: ${ind?.macd?.histogram?.toFixed(0) || 'N/A'}
+EMA9: ${fmt(ind?.ema9)} | EMA20: ${fmt(ind?.ema20)} | EMA50: ${fmt(ind?.ema50)}
+BB Upper: ${fmt(ind?.bb?.upper)} | BB Lower: ${fmt(ind?.bb?.lower)}
+ATR: ${fmt(ind?.atr)} | VWAP: ${fmt(ind?.vwap)}
+Support: ${fmt(ind?.support)} | Resistance: ${fmt(ind?.resistance)}
+Volume Spike: ${ind?.volSpike ? 'YA (' + ind?.volRatio?.toFixed(1) + 'x)' : 'Tidak'}
+Momentum 10h: ${ind?.momentum10?.toFixed(2) || 'N/A'}%
 
-RENCANA ENTRY (risk: ${entry.riskPct}%, R:R = 1:${entry.rr1}):
-Entry: Rp ${fmt(entry.price)} | SL: Rp ${fmt(entry.stopLoss)} (-${entry.riskPct}%) | TP1: Rp ${fmt(entry.takeProfit1)} (+${entry.tp1Pct}%) | TP2: Rp ${fmt(entry.takeProfit2)} (+${entry.tp2Pct}%)
+RENCANA ENTRY (Risk: ${p(entry?.riskPct)}, R:R = 1:${entry?.rr1 || 0}):
+Entry: Rp ${fmt(entry?.price)} | SL: Rp ${fmt(entry?.stopLoss)} (${p(-entry?.riskPct)})
+TP1: Rp ${fmt(entry?.takeProfit1)} (${p(entry?.tp1Pct)}) | TP2: Rp ${fmt(entry?.takeProfit2)} (${p(entry?.tp2Pct)})
 
 SKOR TEKNIKAL: ${score}/100 → ${signal}
-52W High: ${fmt(quote.fiftyTwoWeekHigh)} | 52W Low: ${fmt(quote.fiftyTwoWeekLow)}
+52W High: ${fmt(quote?.fiftyTwoWeekHigh)} | 52W Low: ${fmt(quote?.fiftyTwoWeekLow)}
 `;
 }
