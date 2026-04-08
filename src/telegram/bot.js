@@ -1,6 +1,6 @@
 // src/telegram/bot.js — Telegram Bot dengan grammY
 import { Bot } from 'grammy';
-import { safeSend, handleLLMError, trunc, fmt, fmtPct } from './utils.js';
+import { safeSend, handleLLMError, trunc, fmt, fmtPct, safeFixed } from './utils.js';
 import { handleOwnership, handleOwnershipCallback, handleOwnershipText, initOwnership } from './ownershipFlow.js';
 import {
   handleEntry, handleExit, handlePositions,
@@ -267,8 +267,8 @@ export function startTelegramBot() {
         const hitArb = r.hitArb ? ' 🚨 *KENA ARB!*' : r.nearArb ? ' ⚡ Mendekati ARB' : '';
 
         text += `*${q.symbol}* — Prev: Rp ${fmt(prev)} | Saat ini: Rp ${fmt(current)}\n`;
-        text += `🟢 ARA: Rp ${fmt(r.ara)} (+${r.araPct?.toFixed(0)}%) | Jarak: +${r.distToAraPct}%${hitAra}\n`;
-        text += `🔴 ARB: Rp ${fmt(r.arb)} (-${r.arbPct?.toFixed(0)}%) | Jarak: -${r.distToArbPct}%${hitArb}\n`;
+        text += `🟢 ARA: Rp ${fmt(r.ara)} (+${safeFixed(r.araPct, 0)}%) | Jarak: +${r.distToAraPct}%${hitAra}\n`;
+        text += `🔴 ARB: Rp ${fmt(r.arb)} (-${safeFixed(r.arbPct, 0)}%) | Jarak: -${r.distToArbPct}%${hitArb}\n`;
         text += `Fraksi: Rp ${r.fraksi}\n\n`;
       }
 
@@ -427,7 +427,7 @@ export function startTelegramBot() {
       for (const q of spikes) {
         const chg = (q.changePct||0).toFixed(2);
         text += `${q.volSignal} *${q.symbol}*${q.isKonglo?' 🏦':''}\n`;
-        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.volRatio.toFixed(1)}x)\n\n`;
+        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.safeFixed(volRatio, 1)}x)\n\n`;
       }
       ctx.reply(trunc(text), {parse_mode:'Markdown'});
     } catch(e) { ctx.reply(`❌ ${e.message}`); }
@@ -634,7 +634,7 @@ async function handleIntent(ctx, uid, text, intent) {
       for (const q of spikes) {
         const chg = (q.changePct||0).toFixed(2);
         text += `${q.volSignal} *${q.symbol}*${q.isKonglo?' 🏦':''}\n`;
-        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.volRatio.toFixed(1)}x)\n\n`;
+        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.safeFixed(volRatio, 1)}x)\n\n`;
       }
       return ctx.reply(trunc(text), {parse_mode:'Markdown'});
     } catch(e) { return ctx.reply(`❌ ${e.message}`); }
@@ -648,8 +648,8 @@ async function handleIntent(ctx, uid, text, intent) {
       const r = calcDistanceToLimits(calcAraArb(prev), q.price);
       return ctx.reply(trunc(
         `📊 *ARA & ARB — ${sym}*\nPrev: Rp ${fmt(prev)} | Sekarang: Rp ${fmt(q.price)}\n\n` +
-        `🟢 ARA: Rp ${fmt(r.ara)} (+${r.araPct?.toFixed(0)}%) — Jarak: +${r.distToAraPct}%${r.hitAra?' 🚨 KENA ARA!':r.nearAra?' ⚡ Mendekati ARA':''}\n` +
-        `🔴 ARB: Rp ${fmt(r.arb)} (-${r.arbPct?.toFixed(0)}%) — Jarak: -${r.distToArbPct}%${r.hitArb?' 🚨 KENA ARB!':r.nearArb?' ⚡ Mendekati ARB':''}\n` +
+        `🟢 ARA: Rp ${fmt(r.ara)} (+${safeFixed(r.araPct, 0)}%) — Jarak: +${r.distToAraPct}%${r.hitAra?' 🚨 KENA ARA!':r.nearAra?' ⚡ Mendekati ARA':''}\n` +
+        `🔴 ARB: Rp ${fmt(r.arb)} (-${safeFixed(r.arbPct, 0)}%) — Jarak: -${r.distToArbPct}%${r.hitArb?' 🚨 KENA ARB!':r.nearArb?' ⚡ Mendekati ARB':''}\n` +
         `Fraksi: Rp ${r.fraksi}\n\n_Untuk multi saham: /ara BBCA,BBRI,TLKM_`
       ), {parse_mode:'Markdown'});
     }
@@ -698,14 +698,14 @@ async function doAnalysis(ctx, symbol, mode) {
 
     const volLine = volActual > 0
       ? `Vol: *${(volActual/1e6).toFixed(2)}M lot* ${volSignal}` +
-        (volAvg > 0 ? ` (${volRatio.toFixed(1)}x avg)` : '') +
+        (volAvg > 0 ? ` (${safeFixed(volRatio, 1)}x avg)` : '') +
         (volValue > 0 ? `\nNilai: Rp ${(volValue/1e9).toFixed(2)}B` : '')
       : 'Vol: N/A';
 
     // Plain text output (tanpa Markdown untuk hindari parse error)
     const volLine2 = volActual > 0
       ? `${(volActual/1e6).toFixed(2)}M lot ${volSignal}` +
-        (volAvg > 0 ? ` (${volRatio.toFixed(1)}x avg)` : '') +
+        (volAvg > 0 ? ` (${safeFixed(volRatio, 1)}x avg)` : '') +
         (volValue > 0 ? ` | Nilai Rp ${(volValue/1e9).toFixed(2)}B` : '')
       : 'N/A';
 

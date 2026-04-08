@@ -7,6 +7,7 @@ import { getPortfolio, getDailyTradeCount, getOpenTrades, calcEV } from '../db/d
 
 const fmt    = n => (n!=null && !isNaN(n)) ? Math.round(n).toLocaleString('id-ID') : 'N/A';
 const fmtPct = n => n!=null ? (n>=0?'+':'')+parseFloat(n).toFixed(2)+'%' : 'N/A';
+const safeFixed = (n, d = 2) => { const num = parseFloat(n); return isNaN(num) ? 'N/A' : num.toFixed(d); };
 
 // ── ARA / ARB (BEI per 8 April 2025 — fix 15%) ──────────────
 export function calcARAARB(prevClose) {
@@ -39,13 +40,13 @@ export function classifySetup(quote, indicators, isKonglo = false) {
   // Volume quality scoring
   if (volRatio >= 3.0) {
     scores.KONGLO_MOMENTUM += 25; scores.BREAKOUT_VALID += 25; scores.REVERSAL_AKUMULASI += 20;
-    reasons.push(`🔥 Volume sangat tinggi ${volRatio.toFixed(1)}x — sinyal kuat`);
+    reasons.push(`🔥 Volume sangat tinggi ${safeFixed(volRatio, 1)}x — sinyal kuat`);
   } else if (volRatio >= 2.0) {
     scores.KONGLO_MOMENTUM += 20; scores.BREAKOUT_VALID += 20; scores.REVERSAL_AKUMULASI += 15;
-    reasons.push(`⚡ Volume spike ${volRatio.toFixed(1)}x`);
+    reasons.push(`⚡ Volume spike ${safeFixed(volRatio, 1)}x`);
   } else if (volRatio >= 1.5) {
     scores.KONGLO_MOMENTUM += 10; scores.BREAKOUT_VALID += 10; scores.REVERSAL_AKUMULASI += 8;
-    reasons.push(`📊 Volume di atas rata-rata ${volRatio.toFixed(1)}x`);
+    reasons.push(`📊 Volume di atas rata-rata ${safeFixed(volRatio, 1)}x`);
   } else if (volRatio < 0.5) {
     scores.KONGLO_MOMENTUM -= 10; scores.BREAKOUT_VALID -= 15;
     reasons.push(`⚠️ Volume sangat rendah — sinyal lemah`);
@@ -71,7 +72,7 @@ export function classifySetup(quote, indicators, isKonglo = false) {
   // ── REVERSAL_AKUMULASI ─────────────────────────────────────
   if (rsi < 35) {
     scores.REVERSAL_AKUMULASI += 30;
-    reasons.push(`⚡ RSI ${rsi.toFixed(0)} — oversold`);
+    reasons.push(`⚡ RSI ${safeFixed(rsi, 0)} — oversold`);
   } else if (rsi < 45) {
     scores.REVERSAL_AKUMULASI += 15;
   }

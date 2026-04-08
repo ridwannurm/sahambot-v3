@@ -1,6 +1,7 @@
 // src/indicators/market.js — Multi-source IDX Data Fetcher + Technical Indicators
 import axios from 'axios';
 import { RSI, MACD, EMA, BollingerBands, ATR, Stochastic } from 'technicalindicators';
+const safeFixed = (n, d = 2) => { const num = parseFloat(n); return isNaN(num) ? 'N/A' : num.toFixed(d); };
 
 // ── Symbol Helper ────────────────────────────────────────────
 function toYahooSymbol(s) { return s.endsWith('.JK') ? s : s + '.JK'; }
@@ -166,6 +167,7 @@ export async function fetchMultipleQuotes(symbols) {
         pe: q.trailingPE || null,
         fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || null,
         fiftyTwoWeekLow: q.fiftyTwoWeekLow || null,
+        avgVolume: q.averageDailyVolume10Day || q.averageDailyVolume3Month || 0,
         source: 'yahoo_v7_batch'
       }));
       // Tambahkan yang tidak ada di hasil
@@ -299,10 +301,10 @@ export function scoreScalping(quote, indicators) {
     else { score -= 8; reasons.push('❌ Harga < EMA9'); }
   }
   if (rsi !== undefined) {
-    if (rsi >= 40 && rsi <= 60)       { score += 15; reasons.push(`✅ RSI ${rsi.toFixed(1)} zona ideal`); }
-    else if (rsi < 30)                { score += 10; reasons.push(`⚠️ RSI ${rsi.toFixed(1)} oversold`); }
-    else if (rsi > 70)                { score -= 15; reasons.push(`❌ RSI ${rsi.toFixed(1)} overbought`); }
-    else                               { reasons.push(`ℹ️ RSI ${rsi.toFixed(1)}`); }
+    if (rsi >= 40 && rsi <= 60)       { score += 15; reasons.push(`✅ RSI ${safeFixed(rsi, 1)} zona ideal`); }
+    else if (rsi < 30)                { score += 10; reasons.push(`⚠️ RSI ${safeFixed(rsi, 1)} oversold`); }
+    else if (rsi > 70)                { score -= 15; reasons.push(`❌ RSI ${safeFixed(rsi, 1)} overbought`); }
+    else                               { reasons.push(`ℹ️ RSI ${safeFixed(rsi, 1)}`); }
   }
   if (macd) {
     if (macd.histogram > 0 && macd.MACD > macd.signal) { score += 15; reasons.push('✅ MACD Bullish'); }
@@ -318,8 +320,8 @@ export function scoreScalping(quote, indicators) {
     if (price > vwap) { score += 8; reasons.push('✅ Di atas VWAP'); }
     else              { score -= 5; reasons.push('❌ Di bawah VWAP'); }
   }
-  if (momentum10 > 2)       { score += 7; reasons.push(`✅ Momentum +${momentum10.toFixed(2)}%`); }
-  else if (momentum10 < -2) { score -= 7; reasons.push(`❌ Momentum ${momentum10.toFixed(2)}%`); }
+  if (momentum10 > 2)       { score += 7; reasons.push(`✅ Momentum +${safeFixed(momentum10, 2)}%`); }
+  else if (momentum10 < -2) { score -= 7; reasons.push(`❌ Momentum ${safeFixed(momentum10, 2)}%`); }
 
   const total  = Math.min(100, Math.max(0, score + 20));
   const signal = total >= 70 ? 'BELI' : total >= 50 ? 'NETRAL' : 'JUAL/HINDARI';

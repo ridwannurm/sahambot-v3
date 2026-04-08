@@ -47,6 +47,12 @@ export const fmtVol = v => {
   return String(v);
 };
 
+// Safe toFixed — tidak crash jika n bukan number/null/undefined
+export const safeFixed = (n, d = 2) => {
+  const num = parseFloat(n);
+  return isNaN(num) ? 'N/A' : num.toFixed(d);
+};
+
 // LLM error handler — fallback pesan friendly
 export function handleLLMError(e, fallback = '') {
   const msg = e.message || '';

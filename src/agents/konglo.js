@@ -11,6 +11,7 @@ import { analyzeOrderbookProxy, formatOrderbookTelegram as fmtOBT } from '../ind
 const fmt    = n => (n !== null && n !== undefined && !isNaN(n)) ? Math.round(n).toLocaleString('id-ID') : 'Data tidak tersedia';
 const fmtPct = n => n !== null && n !== undefined ? (n >= 0 ? '+' : '') + parseFloat(n).toFixed(2) + '%' : 'N/A';
 const trunc  = (t, max = 4000) => t.length > max ? t.slice(0, max) + '\n...(terpotong)' : t;
+const safeFixed = (n, d = 2) => { const num = parseFloat(n); return isNaN(num) ? 'N/A' : num.toFixed(d); };
 
 // ── ARB Fix 15% ──────────────────────────────────────────────
 export function calcARB(prevClose) {
@@ -54,7 +55,7 @@ function analyzeOrderbook(quote, indicators) {
   // Volume spike
   if (volRatio > 2.0 && isBull  && chgPct > 0) { akumulasi = true;  signals.push('📊 Volume spike + candle naik → Akumulasi'); }
   if (volRatio > 2.0 && !isBull && chgPct < 0) { distribusi = true; signals.push('📊 Volume spike + candle turun → Distribusi'); }
-  if (volRatio > 1.5 && !akumulasi && !distribusi) signals.push(`📊 Volume ${volRatio.toFixed(1)}x rata-rata`);
+  if (volRatio > 1.5 && !akumulasi && !distribusi) signals.push(`📊 Volume ${safeFixed(volRatio, 1)}x rata-rata`);
 
   // EMA
   if (ema9 && ema20) {
@@ -63,8 +64,8 @@ function analyzeOrderbook(quote, indicators) {
   }
 
   // RSI
-  if (rsi < 35)      signals.push(`⚡ RSI ${rsi.toFixed(0)} oversold`);
-  else if (rsi > 65) signals.push(`⚡ RSI ${rsi.toFixed(0)} overbought`);
+  if (rsi < 35)      signals.push(`⚡ RSI ${safeFixed(rsi, 0)} oversold`);
+  else if (rsi > 65) signals.push(`⚡ RSI ${safeFixed(rsi, 0)} overbought`);
 
   // MACD
   if (macd?.histogram > 0) signals.push('✅ MACD positif');
@@ -410,7 +411,7 @@ export function formatTopVolumeTelegram(movers) {
     text += `${q.rank}. *${q.symbol}*${kongloTag}${kongloName}\n`;
     text += `   ${chgIcon} Rp ${fmt(q.price)} (${parseFloat(chg) >= 0 ? '+' : ''}${chg}%)\n`;
     text += `   📊 Vol: *${q.volMillion}M* ${q.volSignal}\n`;
-    if (q.volRatio > 1) text += `   Rasio: ${q.volRatio.toFixed(1)}x rata-rata\n`;
+    if (q.volRatio > 1) text += `   Rasio: ${q.safeFixed(volRatio, 1)}x rata-rata\n`;
     text += `   ARB: Rp ${fmt(q.arb)} | ARA: Rp ${fmt(q.ara)}\n\n`;
   }
 
