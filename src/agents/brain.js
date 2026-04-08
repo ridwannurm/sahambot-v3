@@ -12,7 +12,7 @@ Jangan terlalu panjang — maksimal 300 kata. Gunakan emoji untuk poin penting.`
 
 // Helper internal (Safety First)
 const fmt = n => (n !== null && n !== undefined) ? Math.round(n).toLocaleString('id-ID') : 'N/A';
-const p = n => (n !== null && n !== undefined) ? n.toFixed(2) + '%' : 'N/A';
+const p = n => { const num = parseFloat(n); return (!isNaN(num)) ? num.toFixed(2) + '%' : 'N/A'; };
 // ── Full Stock Analysis ──────────────────────────────────────
 export async function analyzeStock(symbol, options = {}) {
   const {

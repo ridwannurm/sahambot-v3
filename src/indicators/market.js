@@ -276,10 +276,10 @@ export function calcEntryPlan(quote, indicators, riskProfile = 'moderate') {
   const stopLoss    = Math.round(price - atr * m.sl);
   const takeProfit1 = Math.round(price + atr * m.tp1);
   const takeProfit2 = Math.round(price + atr * m.tp2);
-  const riskPct     = ((price - stopLoss) / price * 100).toFixed(2);
-  const tp1Pct      = ((takeProfit1 - price) / price * 100).toFixed(2);
-  const tp2Pct      = ((takeProfit2 - price) / price * 100).toFixed(2);
-  const rr1         = (parseFloat(tp1Pct) / parseFloat(riskPct)).toFixed(1);
+  const riskPct = parseFloat(((price - stopLoss) / price * 100).toFixed(2));
+  const tp1Pct  = parseFloat(((takeProfit1 - price) / price * 100).toFixed(2));
+  const tp2Pct  = parseFloat(((takeProfit2 - price) / price * 100).toFixed(2));
+  const rr1     = parseFloat((tp1Pct / riskPct).toFixed(1));
 
   return { price, stopLoss, takeProfit1, takeProfit2, riskPct, tp1Pct, tp2Pct, rr1, atr: Math.round(atr) };
 }
