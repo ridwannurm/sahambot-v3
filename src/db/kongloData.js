@@ -16,7 +16,7 @@ function loadFromJSON() {
     try {
       const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf-8'));
       return raw;
-    } catch (e) { console.error("Gagal memuat data konglomerat:", e.message); }
+    } catch (e) { /* fallback */ }
   }
   return null;
 }
@@ -24,34 +24,17 @@ function loadFromJSON() {
 // Lazy-loaded cache
 let _cached = null;
 
+// Reset cache agar data di-reload ulang dari JSON (dipanggil setelah sync Excel)
 export function clearCache() {
   _cached = null;
 }
 
 export function getKongloRaw() {
-  // 1. Jika sudah ada di cache, langsung kembalikan (Efisiensi memori)
   if (_cached) return _cached;
-
   const fromJSON = loadFromJSON();
-
-  if (fromJSON) {
-    // 2. LOGIKA PERBAIKAN:
-    // Pastikan reverseIndex ada. Jika tidak ada di JSON, bangun secara otomatis
-    // menggunakan fungsi buildReverseIndex(fromJSON.konglos) yang sudah kamu buat.
-    if (!fromJSON.reverseIndex || Object.keys(fromJSON.reverseIndex).length === 0) {
-      fromJSON.reverseIndex = buildReverseIndex(fromJSON.konglos || {});
-    }
-
-    _cached = fromJSON;
-    return _cached;
-  }
-
-  // 3. Minimal fallback jika file JSON tidak ditemukan atau error
-  _cached = { 
-    konglos: {}, 
-    reverseIndex: {} 
-  };
-  
+  if (fromJSON) { _cached = fromJSON; return _cached; }
+  // Minimal fallback
+  _cached = { konglos: {}, reverseIndex: {} };
   return _cached;
 }
 
@@ -63,22 +46,8 @@ export function getReverseIndex() {
   return getKongloRaw().reverseIndex || {};
 }
 
-export function buildReverseIndex(konglos) {
-  const reverse = {};
-  for (const [kongloKey, data] of Object.entries(konglos)) {
-    if (!data.saham) continue;
-    data.saham.forEach(s => {
-      if (!reverse[s.kode]) reverse[s.kode] = [];
-      reverse[s.kode].push({
-        kongloKey: kongloKey,
-        kongloNama: data.nama,
-        pemilik: data.pemilik,
-        namaEmiten: s.nama,
-        sektor: s.sektor
-      });
-    });
-  }
-  return reverse;
+export function buildReverseIndex(data) {
+  return getKongloRaw().reverseIndex || {};
 }
 
 export function getSahamByKonglo(query) {
@@ -125,3 +94,4 @@ export function getStats() {
   };
 }
 
+export const KONGLO_DEFAULT = getAllKonglos();

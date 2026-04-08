@@ -1,6 +1,6 @@
 // src/telegram/bot.js — Telegram Bot dengan grammY
 import { Bot } from 'grammy';
-import { safeSend, handleLLMError, trunc } from './utils.js';
+import { safeSend, handleLLMError, trunc, fmt, fmtPct } from './utils.js';
 import { handleOwnership, handleOwnershipCallback, handleOwnershipText, initOwnership } from './ownershipFlow.js';
 import {
   handleEntry, handleExit, handlePositions,
@@ -22,9 +22,6 @@ import { analyzeStock, freeChat, scanWatchlist, calcPositionSize } from '../agen
 import { fetchQuote, fetchMultipleQuotes, calcAllIndicators, fetchOHLC, calcEntryPlan, scoreScalping } from '../indicators/market.js';
 import { getUserMemory, updateUserMemory, getWatchlist, addToWatchlist, removeFromWatchlist, getWinRate, saveScanResult } from '../db/database.js';
 import { loadEnv } from '../config.js';
-
-const fmt    = n => (n != null && !isNaN(n)) ? Math.round(n).toLocaleString('id-ID') : 'N/A';
-const fmtPct = n => n != null ? (n >= 0 ? '+' : '') + parseFloat(n).toFixed(2) + '%' : 'N/A';
 
 const SESSIONS = {};
 
@@ -257,7 +254,6 @@ export function startTelegramBot() {
       const { fetchMultipleQuotes } = await import('../indicators/market.js');
 
       const quotes = await fetchMultipleQuotes(symbols);
-      const fmt = n => n !== null && n !== undefined ? Math.round(n).toLocaleString('id-ID') : 'N/A';
 
       let text = '📊 *ARA & ARB IDX*\n\n';
 
@@ -411,21 +407,30 @@ export function startTelegramBot() {
     } catch(e) { ctx.reply(`❌ ${e.message}`); }
   });
 
-  // ── /topvolume ───────────────────────────────────────────
-  bot.command('topvolume', async (ctx) => {
-  try {
-    const data = await getTopVolume();
-    await ctx.reply(formatTopVolumeTelegram(data), { parse_mode: 'Markdown' });
-  } catch (e) { ctx.reply(`❌ Error: ${e.message}`); }
+  // ── /topvolume ────────────────────────────────────────────
+  bot.command('topvolume', async ctx => {
+    await ctx.reply('📊 Mengambil Top Volume dari Yahoo Finance...');
+    try {
+      const movers = await getTopVolume(15);
+      ctx.reply(trunc(formatTopVolumeTelegram(movers)), {parse_mode:'Markdown'});
+    } catch(e) { ctx.reply(`❌ ${e.message}`); }
   });
 
-  // ── /topvolume ───────────────────────────────────────────
-  bot.command('volumespike', async (ctx) => {
-  try {
-    const data = await getVolumeSpikes();
-    // Gunakan formatter yang sesuai atau buat jika belum ada
-    await ctx.reply(`📊 *Volume Spikes*:\n${JSON.stringify(data)}`, { parse_mode: 'Markdown' });
-  } catch (e) { ctx.reply(`❌ Error: ${e.message}`); }
+  // ── /volumespike ──────────────────────────────────────────
+  bot.command('volumespike', async ctx => {
+    const minRatio = parseFloat(ctx.match?.trim()) || 2.0;
+    await ctx.reply(`⚡ Mencari saham dengan volume spike ≥${minRatio}x...`);
+    try {
+      const spikes = await getVolumeSpikes(minRatio, 15);
+      if (!spikes.length) return ctx.reply('_Tidak ada volume spike signifikan saat ini_', {parse_mode:'Markdown'});
+      let text = `⚡ *Volume Spike Alert* (≥${minRatio}x)\n\n`;
+      for (const q of spikes) {
+        const chg = (q.changePct||0).toFixed(2);
+        text += `${q.volSignal} *${q.symbol}*${q.isKonglo?' 🏦':''}\n`;
+        text += `   Rp ${fmt(q.price)} (${parseFloat(chg)>=0?'+':''}${chg}%) | Vol ${q.volMillion}M (${q.volRatio.toFixed(1)}x)\n\n`;
+      }
+      ctx.reply(trunc(text), {parse_mode:'Markdown'});
+    } catch(e) { ctx.reply(`❌ ${e.message}`); }
   });
 
   // ── /uploadkonglo ─────────────────────────────────────────
@@ -625,7 +630,6 @@ async function handleIntent(ctx, uid, text, intent) {
     try {
       const spikes = await getVolumeSpikes(2.0, 10);
       if (!spikes.length) return ctx.reply('_Tidak ada volume spike signifikan saat ini_', {parse_mode:'Markdown'});
-      const fmt = n => n != null ? Math.round(n).toLocaleString('id-ID') : 'N/A';
       let text = '⚡ *Volume Spike Alert*\n\n';
       for (const q of spikes) {
         const chg = (q.changePct||0).toFixed(2);
@@ -642,7 +646,6 @@ async function handleIntent(ctx, uid, text, intent) {
       const q = await fetchQuote(sym);
       const prev = q.prev || q.price;
       const r = calcDistanceToLimits(calcAraArb(prev), q.price);
-      const fmt = n => n !== null ? Math.round(n).toLocaleString('id-ID') : 'N/A';
       return ctx.reply(trunc(
         `📊 *ARA & ARB — ${sym}*\nPrev: Rp ${fmt(prev)} | Sekarang: Rp ${fmt(q.price)}\n\n` +
         `🟢 ARA: Rp ${fmt(r.ara)} (+${r.araPct?.toFixed(0)}%) — Jarak: +${r.distToAraPct}%${r.hitAra?' 🚨 KENA ARA!':r.nearAra?' ⚡ Mendekati ARA':''}\n` +
@@ -668,80 +671,71 @@ async function handleIntent(ctx, uid, text, intent) {
 }
 
 async function doAnalysis(ctx, symbol, mode) {
-  const uid = String(ctx.from?.id || 'tg');
+  const uid = String(ctx.from?.id||'tg');
   const sess = getSess(uid);
-  await ctx.reply(`🔍 Menganalisis *${symbol}*...`, { parse_mode: 'Markdown' });
-
+  await ctx.reply(`🔍 Menganalisis *${symbol}*...`, {parse_mode:'Markdown'});
   try {
     let r;
     try {
-      r = await analyzeStock(symbol, { 
-        provider: sess.provider, 
-        model: sess.model, 
-        userId: uid, 
-        riskProfile: sess.riskProfile, 
-        mode 
-      });
-    } catch (llmErr) {
+      r = await analyzeStock(symbol, {provider:sess.provider, model:sess.model, userId:uid, riskProfile:sess.riskProfile, mode});
+    } catch(llmErr) {
       const errMsg = handleLLMError(llmErr, llmErr.message);
       return ctx.reply(errMsg);
     }
-
     if (r.error) return ctx.reply(r.error);
-    const { quote: q, indicators: ind, entry: e, score, signal, trend, analysis } = r;
+    const {quote:q, indicators:ind, entry:e, score, signal, trend, analysis} = r;
+    const si = signal==='BELI'?'🟢':signal==='JUAL/HINDARI'?'🔴':'🟡';
 
-    // --- 1. Logika Volume & Penggunaan fmt ---
+    // Volume detail
     const volActual = q?.volume || 0;
     const volAvg    = q?.avgVolume || 0;
-    const volRatio  = ind?.volRatio || (volAvg > 0 ? volActual / volAvg : 1);
+    const volRatio  = ind?.volRatio || (volAvg > 0 ? volActual/volAvg : 1);
     const volValue  = volActual * (q?.price || 0);
     const volSignal = volRatio >= 3.0 ? '🔥 Sangat Tinggi' :
                       volRatio >= 2.0 ? '⚡ Spike' :
                       volRatio >= 1.5 ? '📊 Di atas rata-rata' :
                       volRatio < 0.5  ? '🔇 Rendah' : '⚪ Normal';
 
-    const volLine2 = volActual > 0
-      ? `${(volActual / 1e6).toFixed(2)}M lot ${volSignal}` +
+    const volLine = volActual > 0
+      ? `Vol: *${(volActual/1e6).toFixed(2)}M lot* ${volSignal}` +
         (volAvg > 0 ? ` (${volRatio.toFixed(1)}x avg)` : '') +
-        (volValue > 0 ? ` | Nilai Rp ${(volValue / 1e9).toFixed(2)}B` : '')
+        (volValue > 0 ? `\nNilai: Rp ${(volValue/1e9).toFixed(2)}B` : '')
+      : 'Vol: N/A';
+
+    // Plain text output (tanpa Markdown untuk hindari parse error)
+    const volLine2 = volActual > 0
+      ? `${(volActual/1e6).toFixed(2)}M lot ${volSignal}` +
+        (volAvg > 0 ? ` (${volRatio.toFixed(1)}x avg)` : '') +
+        (volValue > 0 ? ` | Nilai Rp ${(volValue/1e9).toFixed(2)}B` : '')
       : 'N/A';
 
-    // --- 2. Logika Orderbook Insight (Dinamis) ---
-    // Baris ini akan mengisi obText jika r.orderbookInsight ada isinya
-    const obText = r.orderbookInsight 
-      ? `📖 *Orderbook Insight*:\n${r.orderbookInsight}\n\n` 
+    // Orderbook insight
+    const obText = r.orderbookInsight
+      ? ''
       : '';
 
-    // --- 3. Penyusunan Output Akhir ---
     const outText =
       `[${signal}] ${symbol} - ${mode.toUpperCase()}\n` +
       `${r.provider}/${r.model}\n\n` +
-      
-      `Harga: Rp ${fmt(q?.price)} (${fmtPct(q?.changePct)}) | Skor: ${score}/100\n` +
+      `Harga: Rp ${fmt(q?.price)} (${(q?.changePct||0).toFixed(2)}%) | Skor: ${score}/100\n` +
       `Open: ${fmt(q?.open)} | High: ${fmt(q?.high)} | Low: ${fmt(q?.low)}\n` +
       `Trend: ${trend}\n\n` +
-      
       `Volume:\n${volLine2}\n\n` +
-      
       `Indikator:\n` +
-      `RSI: ${(ind?.rsi || 0).toFixed(1)} | MACD: ${(ind?.macd?.MACD || 0).toFixed(0)}\n` +
+      `RSI: ${ind?.rsi?.toFixed(1)||'N/A'} | MACD: ${ind?.macd?.MACD?.toFixed(0)||'N/A'}\n` +
       `EMA9: ${fmt(ind?.ema9)} | EMA20: ${fmt(ind?.ema20)}\n` +
       `Support: ${fmt(ind?.support)} | Resist: ${fmt(ind?.resistance)}\n\n` +
-      
-      // Orderbook disisipkan di sini (muncul hanya jika tersedia)
-      obText + 
-      
-      `Entry Plan (R:R 1:${e?.rr1 || 0}):\n` +
+      (obText ? obText + '\n' : '') +
+      `Entry Plan (R:R 1:${e?.rr1}):\n` +
       `Entry: Rp ${fmt(e?.price)}\n` +
-      `SL   : Rp ${fmt(e?.stopLoss)} (${fmtPct(-(e?.riskPct || 0))})\n` +
-      `TP1  : Rp ${fmt(e?.takeProfit1)} (${fmtPct(e?.tp1Pct)})\n` +
-      `TP2  : Rp ${fmt(e?.takeProfit2)} (${fmtPct(e?.tp2Pct)})\n\n` +
-      
+      `SL   : Rp ${fmt(e?.stopLoss)} (-${e?.riskPct}%)\n` +
+      `TP1  : Rp ${fmt(e?.takeProfit1)} (+${e?.tp1Pct}%)\n` +
+      `TP2  : Rp ${fmt(e?.takeProfit2)} (+${e?.tp2Pct}%)\n\n` +
       `Analisis AI:\n${analysis || 'Tidak ada analisis AI (cek API key)'}`;
 
     await ctx.reply(trunc(outText));
-  } catch (e) {
-    ctx.reply('Error: ' + (e.message || 'Unknown Error'));
+  } catch(e) {
+    ctx.reply('Error: ' + handleLLMError(e, e.message));
   }
 }
 
@@ -805,9 +799,4 @@ export async function runTelegramFullScan(bot, chatId, options = {}) {
 
   await bot.api.sendMessage(chatId, trunc(text), { parse_mode: 'Markdown' });
   return result;
-}
-
-// Gunakan ini terutama pada output yang berasal dari AI (unpredictable)
-function escapeMd(text) {
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
