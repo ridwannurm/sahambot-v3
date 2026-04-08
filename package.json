@@ -1,6 +1,6 @@
 {
   "name": "sahambot-v2",
-  "version": "3.2.3",
+  "version": "3.2.4",
   "description": "Master Trading System \u2014 Multi-AI IDX Analyzer + Konglo Intelligence + Trade Tracker",
   "main": "index.js",
   "scripts": {

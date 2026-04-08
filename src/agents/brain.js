@@ -1,6 +1,7 @@
 // src/agents/brain.js — AI Trading Brain
 import { callLLM } from '../llm/router.js';
 import { fetchQuote, fetchOHLC, calcAllIndicators, scoreScalping, calcEntryPlan } from '../indicators/market.js';
+import { analyzeOrderbookProxy, formatOrderbookForAI } from '../indicators/orderbookProxy.js';
 import { getContext, addContext, saveAnalysis, getAnalysisHistory, getWinRate, getUserMemory } from '../db/database.js';
 
 const SYSTEM_PROMPT = `Kamu adalah AI analis saham IDX Indonesia yang expert dalam scalping dan swing trading T+2.
@@ -26,7 +27,7 @@ export async function analyzeStock(symbol, options = {}) {
 
   const entry = calcEntryPlan(quote, indicators, riskProfile);
   const { score, reasons, signal, trend } = scoreScalping(quote, indicators);
-  const orderbookInsight = buildOrderbookInsight(quote, ohlc);
+  const orderbookInsight = analyzeOrderbookProxy(quote, ohlc);
 
   // Build context string for LLM
   const dataContext = buildDataContext(symbol, quote, indicators, entry, score, signal, trend);
@@ -39,11 +40,11 @@ export async function analyzeStock(symbol, options = {}) {
   // Tambahkan orderbook insight ke prompt AI
   const obText = orderbookInsight
     ? `\nORDERBOOK PROXY:\n` +
-      `Bias: ${orderbookInsight.overallBias} (${orderbookInsight.biasStrength})\n` +
-      `MFI: ${orderbookInsight.mfi?.toFixed(1) || 'N/A'}\n` +
-      `Buy vol: ${orderbookInsight.volumeDelta?.buyPct}% vs Sell vol: ${orderbookInsight.volumeDelta?.sellPct}%\n` +
-      `CVD Trend: ${orderbookInsight.cvd?.cvdTrend}\n` +
-      `Large trades: ${orderbookInsight.largeTrades?.count || 0} event\n` +
+      `Bias: ${orderbookInsight.verdict} (${orderbookInsight.strength})\n` +
+      `MFI: ${orderbookInsight.pf?.cmf?.toFixed(3) || 'N/A'}\n` +
+      `Buy vol: ${orderbookInsight.buyPct}% vs Sell vol: ${orderbookInsight.sellPct}%\n` +
+      `CVD Trend: ${orderbookInsight.pf?.obvTrend}\n` +
+      `Large trades: ${(orderbookInsight.hasLargeOrder ? 1 : 0) || 0} event\n` +
       `Insights: ${orderbookInsight.insights?.join(' | ')}`
     : '';
 

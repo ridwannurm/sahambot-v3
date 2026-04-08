@@ -1,6 +1,7 @@
 // src/agents/trading.js — Master Trading Engine v3.1
 import { fetchQuote, fetchOHLC, calcAllIndicators, scoreScalping, calcEntryPlan } from '../indicators/market.js';
-import { buildOrderbookInsight, formatOrderbookInsight } from '../indicators/orderbookProxy.js';
+import { analyzeOrderbookProxy, formatOrderbookForAI } from '../indicators/orderbookProxy.js';
+
 import { getKongloData } from '../db/excelLoader.js';
 import { getPortfolio, getDailyTradeCount, getOpenTrades, calcEV } from '../db/database.js';
 
@@ -113,7 +114,8 @@ export async function decisionEngine(symbol, userId = 'default') {
   const [quote, ohlc] = await Promise.all([fetchQuote(symbol), fetchOHLC(symbol, '3mo')]);
   const indicators    = calcAllIndicators(ohlc);
   if (!indicators) return { action: 'SKIP', reason: 'Data tidak cukup untuk analisis' };
-  const orderbookInsight = buildOrderbookInsight(quote, ohlc);
+  const obProxy = analyzeOrderbookProxy(quote, ohlc);
+  
 
   const { data: kongloData, reverseIndex } = await getKongloData();
   const isKonglo   = !!(reverseIndex[symbol]);
@@ -129,10 +131,10 @@ export async function decisionEngine(symbol, userId = 'default') {
   // Orderbook boost ke score
   let obBoost = 0;
   if (orderbookInsight) {
-    if (orderbookInsight.overallBias === 'BELI DOMINAN' && orderbookInsight.biasStrength === 'KUAT') obBoost = +10;
-    else if (orderbookInsight.overallBias === 'BELI DOMINAN') obBoost = +5;
-    else if (orderbookInsight.overallBias === 'JUAL DOMINAN' && orderbookInsight.biasStrength === 'KUAT') obBoost = -10;
-    else if (orderbookInsight.overallBias === 'JUAL DOMINAN') obBoost = -5;
+    if (orderbookInsight.verdict === 'BELI DOMINAN' && orderbookInsight.strength === 'KUAT') obBoost = +10;
+    else if (orderbookInsight.verdict === 'BELI DOMINAN') obBoost = +5;
+    else if (orderbookInsight.verdict === 'JUAL DOMINAN' && orderbookInsight.strength === 'KUAT') obBoost = -10;
+    else if (orderbookInsight.verdict === 'JUAL DOMINAN') obBoost = -5;
   }
   const finalScore = Math.min(100, Math.max(0, Math.round((techScore * 0.45) + (setupResult.score * 0.45) + obBoost)));
 

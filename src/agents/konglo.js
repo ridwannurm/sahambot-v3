@@ -5,7 +5,8 @@
 import { getKongloData } from '../db/excelLoader.js';
 import { getSahamByKonglo, listAllKonglo, getCrossOwnership, getStats } from '../db/kongloData.js';
 import { fetchMultipleQuotes, fetchOHLC, calcAllIndicators, calcEntryPlan, scoreScalping } from '../indicators/market.js';
-import { buildOrderbookInsight } from '../indicators/orderbookProxy.js';
+import { analyzeOrderbookProxy, formatOrderbookTelegram as fmtOBT } from '../indicators/orderbookProxy.js';
+
 
 const fmt    = n => (n !== null && n !== undefined && !isNaN(n)) ? Math.round(n).toLocaleString('id-ID') : 'Data tidak tersedia';
 const fmtPct = n => n !== null && n !== undefined ? (n >= 0 ? '+' : '') + parseFloat(n).toFixed(2) + '%' : 'N/A';
@@ -132,8 +133,8 @@ export async function analyzeKonglo(query) {
       try {
         const ohlc = await fetchOHLC(saham.kode, '3mo');
         indicators = calcAllIndicators(ohlc);
-        orderbook  = analyzeOrderbook(quote, indicators);
-        orderbookInsight = buildOrderbookInsight(quote, ohlc);
+        orderbook  = analyzeOrderbookProxy(quote, ohlc);
+        
         if (indicators && quote.price > 0) {
           entry = calcEntryPlan(quote, indicators, 'moderate');
           const sc = scoreScalping(quote, indicators);
@@ -275,7 +276,8 @@ export function formatKongloTelegram(result) {
   }
 
   text += `Sumber: Excel + Yahoo Finance | ARB -15% | v3`;
-  return trunc(text);
+  // Jangan truncate di sini — biarkan bot.js yang handle split
+  return text;
 }
 
 // ── Top Gainers & Top Losers ──────────────────────────────────

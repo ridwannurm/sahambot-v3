@@ -12,7 +12,6 @@ import {
   handlePendingEntryText, handlePendingExitText
 } from './tradeFlow.js';
 import { decisionEngine, formatAnalysisTelegram } from '../agents/trading.js';
-import { formatOrderbookInsight } from '../indicators/orderbookProxy.js';
 import { initTradingTables } from '../db/database.js';
 import { analyzeKonglo, formatKongloTelegram, getTopMovers, formatTopMoversTelegram, formatKongloListTelegram, getTopVolume, formatTopVolumeTelegram, getVolumeSpikes } from '../agents/konglo.js';
 import { startAutoUpdateChecker, hasUpdate, getVersionInfo } from '../updater.js';
@@ -364,12 +363,30 @@ export function startTelegramBot() {
       if (result.error) {
         return ctx.reply(result.error);
       }
-      // Strip markdown untuk menghindari parse error
-      const text = formatKongloTelegram(result)
-        .replace(/\*/g, '').replace(/_([^_]*)_/g, '$1').replace(/`/g, '');
-      ctx.reply(trunc(text));
+      const fullText = formatKongloTelegram(result);
+
+      // Kirim per bagian jika panjang (maks 3800 per pesan)
+      const MAX = 3800;
+      if (fullText.length <= MAX) {
+        await ctx.reply(fullText);
+      } else {
+        // Split per saham (per separator ---)
+        const parts = fullText.split('----------------------------');
+        const header = parts[0];
+        let buffer = header;
+        for (let i = 1; i < parts.length; i++) {
+          const chunk = '----------------------------' + parts[i];
+          if ((buffer + chunk).length > MAX) {
+            await ctx.reply(buffer.trim());
+            buffer = chunk;
+          } else {
+            buffer += chunk;
+          }
+        }
+        if (buffer.trim()) await ctx.reply(buffer.trim());
+      }
     } catch(e) {
-      ctx.reply('Error: ' + e.message);
+      ctx.reply('Error analisis: ' + e.message);
     }
   });
 
@@ -538,7 +555,22 @@ async function handleIntent(ctx, uid, text, intent) {
       await ctx.reply(`🏦 Menganalisis konglomerat *${kongloQuery}*...`, {parse_mode:'Markdown'});
       try {
         const result = await analyzeKonglo(kongloQuery);
-        return ctx.reply(trunc(formatKongloTelegram(result)), {parse_mode:'Markdown'});
+        const fullText = formatKongloTelegram(result);
+        if (fullText.length <= 3800) {
+          return ctx.reply(fullText);
+        } else {
+          const parts = fullText.split('----------------------------');
+          const header = parts[0];
+          let buffer = header;
+          for (let i = 1; i < parts.length; i++) {
+            const chunk = '----------------------------' + parts[i];
+            if ((buffer + chunk).length > 3800) {
+              await ctx.reply(buffer.trim());
+              buffer = chunk;
+            } else { buffer += chunk; }
+          }
+          if (buffer.trim()) return ctx.reply(buffer.trim());
+        }
       } catch(e) { return ctx.reply(`❌ ${e.message}`); }
     }
     return ctx.reply(trunc(formatKongloListTelegram()), {parse_mode:'Markdown'});
@@ -656,7 +688,7 @@ async function doAnalysis(ctx, symbol, mode) {
 
     // Orderbook insight
     const obText = r.orderbookInsight
-      ? formatOrderbookInsight(r.orderbookInsight)
+      ? ''
       : '';
 
     const outText =

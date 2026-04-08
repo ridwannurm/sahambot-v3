@@ -12,7 +12,6 @@ import {
 import { decisionEngine, calcCompounding, buildMultiDayContext } from '../agents/trading.js';
 import { fetchQuote } from '../indicators/market.js';
 import { safeSend, fmt, fmtPct, fmtVol, handleLLMError } from './utils.js';
-import { formatOrderbookInsight } from '../indicators/orderbookProxy.js';
 
 // ── /entry <kode> ─────────────────────────────────────────────
 export async function handleEntry(ctx) {
@@ -47,11 +46,11 @@ export async function handleEntry(ctx) {
 
     const obSummary = result.orderbookInsight
       ? `\nOrderbook Proxy:\n` +
-        `Bias  : ${result.orderbookInsight.overallBias} (${result.orderbookInsight.biasStrength})\n` +
-        `Buy   : ${result.orderbookInsight.volumeDelta?.buyPct}% vs Sell: ${result.orderbookInsight.volumeDelta?.sellPct}%\n` +
-        `CVD   : ${result.orderbookInsight.cvd?.cvdTrend} — ${result.orderbookInsight.cvd?.interpretation}\n` +
-        (result.orderbookInsight.largeTrades?.count > 0
-          ? `Large: ${result.orderbookInsight.largeTrades.count} event terdeteksi\n` : '') +
+        `Bias  : ${result.orderbookInsight.verdict} (${result.orderbookInsight.strength})\n` +
+        `Buy   : ${result.orderbookInsight.buyPct}% vs Sell: ${result.orderbookInsight.sellPct}%\n` +
+        `OBV   : ${result.orderbookInsight.pf?.obvTrend || 'N/A'}\n` +
+        (result.orderbookInsight.hasLargeOrder
+          ? `Large Order: ${result.orderbookInsight.largeOrderDir} terdeteksi\n` : '') +
         `\n`
       : '';
 
