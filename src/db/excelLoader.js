@@ -66,13 +66,23 @@ const TTL = 5 * 60 * 1000;
 
 export async function getKongloData() {
   const now = Date.now();
-  if (_cache && (now - _cacheTime) < TTL) return _cache;
+
+  // Jika cache ada dan belum expired, cek dulu datanya tidak kosong
+  if (_cache && (now - _cacheTime) < TTL && Object.keys(_cache.data || {}).length > 0) {
+    return _cache;
+  }
+
+  // Reset cache agar getAllKonglos() baca ulang dari disk
+  _cache = null;
+  clearCache();
 
   await syncExcelToJSON();
 
   const data    = getAllKonglos();
   const reverse = getReverseIndex();
   const stats   = getStats();
+
+  console.log(`[KongloData] Loaded: ${Object.keys(data).length} konglo, ${Object.keys(reverse).length} saham`);
 
   const excelExists = fs.existsSync(EXCEL_PATH);
   const source = excelExists ? 'excel' : (fs.existsSync(JSON_PATH) ? 'json' : 'default');
